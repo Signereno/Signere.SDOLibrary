@@ -377,7 +377,7 @@ namespace Signere.SDOLibrary
                 //Find the signtime attribute
                 var oidvalue = cms.SignerInfos[0].SignedAttributes[i].Oid.Value;
                 var friendlyname = cms.SignerInfos[0].SignedAttributes[i].Oid.FriendlyName;
-                if (oidvalue.Equals("1.2.840.113549.1.9.5") && friendlyname.Equals("Signing Time"))
+                if (oidvalue.Equals("1.2.840.113549.1.9.5") && (friendlyname.Equals("Signing Time") || friendlyname.Equals("Tidspunkt for signatur")))
                 {
                     {
                         var value = ((Pkcs9SigningTime) cms.SignerInfos[0].SignedAttributes[i].Values[0]).SigningTime;
