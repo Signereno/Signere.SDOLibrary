@@ -1,10 +1,15 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Security.Cryptography.Pkcs;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Xml;
+using System.Xml.Linq;
 
 namespace Signere.SDOLibrary
 {
@@ -16,6 +21,7 @@ namespace Signere.SDOLibrary
         private XmlDocument xmlDoc;
         private XmlNamespaceManager nm;
         private ContentInfo DocumentContentInfo;
+        private string xmlstring;
 
         /// <summary>
         /// Load SDO from string
@@ -25,7 +31,7 @@ namespace Signere.SDOLibrary
         {
             var xmlDoctmp = new XmlDocument();
             xmlDoctmp.LoadXml(sdoXML);
-
+            xmlstring = sdoXML;
             SetupXML(xmlDoctmp);
         }
 
@@ -41,6 +47,8 @@ namespace Signere.SDOLibrary
             var xmlDoctmp = new XmlDocument();
             xmlDoctmp.Load(filepath);
 
+            xmlstring = File.ReadAllText(filepath);
+
             SetupXML(xmlDoctmp);
         }
       
@@ -53,6 +61,8 @@ namespace Signere.SDOLibrary
             var xmlDoctmp = new XmlDocument();
             xmlDoctmp.Load(new MemoryStream(filedata));
 
+            xmlstring = Encoding.UTF8.GetString(filedata);
+
             SetupXML(xmlDoctmp);
         }
 
@@ -64,6 +74,12 @@ namespace Signere.SDOLibrary
             var xmlDoctmp = new XmlDocument();
             xmlDoctmp.Load(stream);
 
+
+            using (StreamReader reader = new StreamReader(stream))
+            {
+                xmlstring = reader.ReadToEnd();
+            }
+                
             SetupXML(xmlDoctmp);
         }
 
@@ -101,11 +117,17 @@ namespace Signere.SDOLibrary
             {
                 var signatureNode = xmlDoc.SelectSingleNode("/SDOList/SDO/SDOSeal/SDOSignature/CMSSignatureElement/CMSSignature", nm);
                 var sealNode = xmlDoc.SelectSingleNode("/SDOList/SDO/SDODataPart", nm);
-                var sealData = Encoding.GetEncoding("ISO-8859-1").GetBytes(sealNode.InnerText);
-
+                
+                Regex regex = new Regex("<SDODataPart>(.*?)</SDODataPart>");
+                string nodeXml =string.Format("<SDODataPart>{0}</SDODataPart>", regex.Match(xmlstring).Groups[1].ToString());
+                
+                var sealData = System.Text.Encoding.UTF8.GetBytes(nodeXml); //Encoding.GetEncoding(1252)
+                //Console.WriteLine(Convert.ToBase64String(new SHA256Managed().ComputeHash((sealData))));
                 ContentInfo SealdContentInfo = new ContentInfo(sealData);
-                SignedCms cms = new SignedCms(SealdContentInfo, true);
+                SignedCms cms = new SignedCms(SealdContentInfo,true);
+                                
                 cms.Decode(Convert.FromBase64String(signatureNode.InnerText));
+                
 
                 DateTime? sealedTimeStamp = GetSigningTimeFromSignedCMS(cms);
                 if (sealedTimeStamp == null)
@@ -113,20 +135,40 @@ namespace Signere.SDOLibrary
                     throw new Exception("Not valid timestamp on seal");
                 }
 
-                bool verified = true;
-                //verified = Verified(cms);
-                string certuser = null;
-                string certbank = null;
+                bool verified = Verified(cms);
+                
+                X509Certificate2 certuser = null;
+                X509Certificate2 certbank = null;
                 GetCertificateStringForBankAndForUser(cms, ref certbank, ref certuser);
 
                 return new Signature()
                     {
                         TimeStamp = sealedTimeStamp.Value,
-                        Name = certuser.Name(),
+                        Name = certuser.SubjectName.Name.Name(),
                         Verified = verified,
+                        Certificate=cms.Certificates[0],
                     };
             }
         }
+
+        public static XmlDocument RemoveXmlns(XmlDocument doc)
+        {
+            XDocument d;
+            using (var nodeReader = new XmlNodeReader(doc))
+                d = XDocument.Load(nodeReader);
+
+            d.Root.Descendants().Attributes().Where(x => x.IsNamespaceDeclaration).Remove();
+
+            foreach (var elem in d.Descendants())
+                elem.Name = elem.Name.LocalName;
+
+            var xmlDocument = new XmlDocument();
+            using (var xmlReader = d.CreateReader())
+                xmlDocument.Load(xmlReader);
+
+            return xmlDocument;
+        }
+
 
         /// <summary>
         /// Returns the documenttype xml, pdf or text.
@@ -282,29 +324,36 @@ namespace Signere.SDOLibrary
                     if (signatureNode != null)
                         cms.Decode(Convert.FromBase64String( signatureNode.InnerText));
                     var signedTime = GetSigningTimeFromSignedCMS(cms);
-                    string certuser = null;
-                    string certbank = null;
+                    X509Certificate2 certuser = null;
+                    X509Certificate2 certbank = null;
                     GetCertificateStringForBankAndForUser(cms, ref certbank, ref certuser);
 
                     string banktype = "PersonBankID";
-                    bool isPersonBank = !string.IsNullOrEmpty( certuser.Organization()) && certuser.Organization().Equals("BankID");
+                    bool isPersonBank = !string.IsNullOrEmpty( certuser.SubjectName.Name.Organization()) && certuser.SubjectName.Name.Organization().Equals("BankID");
                     if (!isPersonBank)
                     {
                         banktype = "BrukerstedsBankID";
                     }                    
                     bool verified = Verified(cms);
 
+                    string oid= item.SelectSingleNode("CMSSignatureElement/SignaturePolicyIdentifier/SignaturePolicyId/SigPolicyId/XAdES:Identifier", nm).InnerText.Replace("urn:oid:", "");
+
+                    
+
                     retur.Add(new BankIDSignature()
                         {
                             SDOProfile = sdoprofile,
-                            SignPolicy =item.SelectSingleNode("CMSSignatureElement/SignaturePolicyIdentifier/SignaturePolicyId/SigPolicyId/XAdES:Identifier",nm).InnerText,
-                            Name = certuser.Name(),
-                            BankName = certbank.BankName(),
-                            UniqueId = certuser.SerialNumber(),                            
+                            SignPolicy =oid,
+                            //SignPolicyOid= BankID_Oid.Oids[oid],
+                            Name = certuser.SubjectName.Name.Name(),
+                            BankName = certbank.SubjectName.Name.BankName(),
+                            UniqueId = certuser.SubjectName.Name.SerialNumber(),                            
                             BankIDtype = banktype,
                             TimeStamp = signedTime.Value,
                             Verified = verified,
-                        });
+                            Certificate = certuser,
+
+                    });
                 }
 
                 return retur;
@@ -315,12 +364,14 @@ namespace Signere.SDOLibrary
         {            
             try
             {
-                cms.CheckSignature(true);
-                //cms.CheckSignature(false);
-                cms.CheckHash();                
+                cms.CheckHash();
+                cms.CheckSignature(true);                                           
             }
-            catch (Exception)
+            catch (Exception e)
             {
+#if DEBUG
+                Console.WriteLine(e);
+#endif
                 return false;
             }
 
@@ -339,9 +390,14 @@ namespace Signere.SDOLibrary
             }
             nm.AddNamespace("XAdES", "http://uri.etsi.org/01903/v1.2.2#");
             DocumentContentInfo = new ContentInfo(SignedDocument);
+
+
+           // xmlDoc = RemoveXmlns(xmlDoc);
         }
 
-        private static void GetCertificateStringForBankAndForUser(SignedCms cms, ref string certbank, ref string certuser)
+    
+
+        private static void GetCertificateStringForBankAndForUser(SignedCms cms, ref X509Certificate2 certbank, ref X509Certificate2 certuser)
         {
             X509Certificate2 cert1 = cms.Certificates[0];
             X509Certificate2 cert2 = cms.Certificates[1];
@@ -356,17 +412,19 @@ namespace Signere.SDOLibrary
             
             chain.Build(cert1);
             chain.Build(cert2);
+
+            
            
 
             if (cert1.IssuerName.Name != null && cert1.IssuerName.Name.Contains("BankID Root CA"))
             {
-                certbank = cert1.SubjectName.Name;
-                certuser = cert2.SubjectName.Name;
+                certbank = cert1;
+                certuser = cert2;
             }
             else if(cert1.IssuerName.Name != null && !cert1.IssuerName.Name.Contains("BankID Root CA"))
             {
-                certbank = cert2.SubjectName.Name;
-                certuser = cert1.SubjectName.Name;
+                certbank = cert2;
+                certuser = cert1;
             }
         }
 

@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Security.Cryptography.X509Certificates;
 
 namespace Signere.SDOLibrary
 {
@@ -19,6 +21,8 @@ namespace Signere.SDOLibrary
         /// Have the signature been verified
         /// </summary>
         public bool Verified { get; set; }
+
+        public X509Certificate2 Certificate { get; set; }
     }
 
     /// <summary>
@@ -39,14 +43,17 @@ namespace Signere.SDOLibrary
         /// </summary>
         public string SDOProfile { get; set; }
         /// <summary>
-        /// Sign policy OID (urn:oid:2.16.578.1.16.4.1)
+        ///  Sign policy Description
         /// </summary>
         public string SignPolicy { get; set; }
         /// <summary>
         /// Unique id for the signer. For organization this is the MVA number, for persons this is a unique number across multiple BankIDs (not social security number).
         /// </summary>
         public string UniqueId { get; set; }
-
+        /// <summary>
+        /// Sign policy OID (urn:oid:2.16.578.1.16.4.1)
+        /// </summary>
+        public string SignPolicyOid { get; set; }
     }
     /// <summary>
     /// DocumentType representing different types of document that can be signed with BankID (pdf, xml and text).
@@ -76,5 +83,23 @@ namespace Signere.SDOLibrary
         /// Description of the metadata
         /// </summary>
         public string Description { get; set; }
+    }
+
+  
+    public static class BankID_Oid
+    {
+
+        public static Dictionary<string,string> Oids=new Dictionary<string, string>()
+        {
+            {   "2.16.578.1.16.1.6.1.1","Soft merchant certificate"},
+            {   "2.16.578.1.16.1.6.2.1","HSM merchant certificate"},
+            {   "2.16.578.1.16.1.9.1","NetCentric personal certificate"},            
+            {   "2.16.578.1.16.1.11.2.1","NetCentric employee certificate"},
+            {   "2.16.578.1.16.1.12.1.1","NetCentric Qualified personal certificate"},
+            {   "2.16.578.1.16.1.13.1.1","NetCentric Qualified employee certificate"},
+            {   "2.16.578.1.16.1.12.2.1","Mobile personal certificate"},
+        };
+
+
     }
 }

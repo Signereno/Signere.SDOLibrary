@@ -42,6 +42,12 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
+    <None Include="test3_corrup_document.sdo">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Include="test2_corrupt_seal.sdo">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Include="Test1.sdo">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
